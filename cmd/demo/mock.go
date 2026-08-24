@@ -24,22 +24,18 @@ type Injection struct {
 type Simulator struct {
 	mu         sync.RWMutex
 	injections map[string]Injection
+	stops      map[string]chan struct{}
 	registry   *breaker.Registry
 	randomMu   sync.Mutex
 	random     *rand.Rand
-	stop       chan struct{}
 }
 
-func NewSimulator(registry *breaker.Registry, stops ...chan struct{}) *Simulator {
-	stop := make(chan struct{})
-	if len(stops) > 0 && stops[0] != nil {
-		stop = stops[0]
-	}
+func NewSimulator(registry *breaker.Registry) *Simulator {
 	return &Simulator{
 		injections: make(map[string]Injection),
+		stops:      make(map[string]chan struct{}),
 		registry:   registry,
 		random:     rand.New(rand.NewSource(time.Now().UnixNano())),
-		stop:       stop,
 	}
 }
 
@@ -70,18 +66,27 @@ func (s *Simulator) Start(injection Injection) Injection {
 	if injection.ExpiresAt.IsZero() {
 		injection.ExpiresAt = now.Add(15 * time.Second)
 	}
+	stop := make(chan struct{})
 	s.mu.Lock()
+	if prev, ok := s.stops[injection.Resource]; ok {
+		close(prev)
+	}
 	s.injections[injection.Resource] = injection
+	s.stops[injection.Resource] = stop
 	s.mu.Unlock()
-	go s.generateTraffic(injection.Resource, injection.ExpiresAt)
+	go s.generateTraffic(injection.Resource, injection.ExpiresAt, stop)
 	return injection
 }
 
 func (s *Simulator) StopAll() {
-	close(s.stop)
 	s.mu.Lock()
+	stops := s.stops
+	s.stops = make(map[string]chan struct{})
 	s.injections = make(map[string]Injection)
 	s.mu.Unlock()
+	for _, stop := range stops {
+		close(stop)
+	}
 }
 
 func (s *Simulator) Status() []Injection {
@@ -117,12 +122,12 @@ func (s *Simulator) randomFloat() float64 {
 	return value
 }
 
-func (s *Simulator) generateTraffic(resource string, expiresAt time.Time) {
+func (s *Simulator) generateTraffic(resource string, expiresAt time.Time, stop chan struct{}) {
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-s.stop:
+		case <-stop:
 			return
 		case now := <-ticker.C:
 			injection, active := s.active(resource)

@@ -67,3 +67,50 @@ func TestSimulateHandlerRejectsTrailingJSON(t *testing.T) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }
+
+func TestStopAllIsIdempotent(t *testing.T) {
+	registry := breaker.NewRegistry()
+	instance := registry.GetOrCreate("service")
+	simulator := NewSimulator(registry)
+	simulator.Start(Injection{Resource: "service", ExpiresAt: time.Now().Add(3 * time.Second)})
+	waitForTraffic(t, instance, time.Second)
+
+	// Calling StopAll more than once must not panic ("close of closed channel").
+	simulator.StopAll()
+	simulator.StopAll()
+	simulator.StopAll()
+}
+
+func TestReinjectAfterStopProducesFreshTraffic(t *testing.T) {
+	registry := breaker.NewRegistry()
+	instance := registry.GetOrCreate("service")
+	simulator := NewSimulator(registry)
+
+	simulator.Start(Injection{Resource: "service", ExpiresAt: time.Now().Add(3 * time.Second)})
+	waitForTraffic(t, instance, time.Second)
+
+	simulator.StopAll()
+	stoppedAt := instance.Snapshot().Metrics.TotalRequests
+	// Give lingering goroutines a chance to flush in-flight requests.
+	time.Sleep(300 * time.Millisecond)
+	if got := instance.Snapshot().Metrics.TotalRequests; got > stoppedAt+1 {
+		t.Fatalf("traffic continued after stop: before=%d after=%d", stoppedAt, got)
+	}
+
+	// A new round of injection must obtain a usable stop signal and produce traffic again.
+	simulator.Start(Injection{Resource: "service", ExpiresAt: time.Now().Add(3 * time.Second)})
+	waitForTraffic(t, instance, time.Second)
+	simulator.StopAll()
+}
+
+func waitForTraffic(t *testing.T, instance *breaker.Breaker, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for instance.Snapshot().Metrics.TotalRequests == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if instance.Snapshot().Metrics.TotalRequests == 0 {
+		t.Fatal("traffic generator did not start")
+	}
+}
+

@@ -24,7 +24,8 @@ func main() {
 
 	registry := breaker.NewRegistry()
 	registerBreakers(registry)
-	simulator := NewSimulator(registry)
+	trafficStop := make(chan struct{})
+	simulator := NewSimulator(registry, trafficStop)
 	app := server.New(
 		registry,
 		server.WithAddr(*addr),

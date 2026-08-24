@@ -27,13 +27,19 @@ type Simulator struct {
 	registry   *breaker.Registry
 	randomMu   sync.Mutex
 	random     *rand.Rand
+	stop       chan struct{}
 }
 
-func NewSimulator(registry *breaker.Registry) *Simulator {
+func NewSimulator(registry *breaker.Registry, stops ...chan struct{}) *Simulator {
+	stop := make(chan struct{})
+	if len(stops) > 0 && stops[0] != nil {
+		stop = stops[0]
+	}
 	return &Simulator{
 		injections: make(map[string]Injection),
 		registry:   registry,
 		random:     rand.New(rand.NewSource(time.Now().UnixNano())),
+		stop:       stop,
 	}
 }
 
@@ -72,6 +78,7 @@ func (s *Simulator) Start(injection Injection) Injection {
 }
 
 func (s *Simulator) StopAll() {
+	close(s.stop)
 	s.mu.Lock()
 	s.injections = make(map[string]Injection)
 	s.mu.Unlock()
@@ -115,6 +122,8 @@ func (s *Simulator) generateTraffic(resource string, expiresAt time.Time) {
 	defer ticker.Stop()
 	for {
 		select {
+		case <-s.stop:
+			return
 		case now := <-ticker.C:
 			injection, active := s.active(resource)
 			if !active || !expiresAt.After(now) || !injection.ExpiresAt.Equal(expiresAt) {

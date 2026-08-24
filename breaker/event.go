@@ -110,7 +110,12 @@ func callListener(listener Listener, event Event) {
 
 func (b *eventBus) recent(limit int) []Event {
 	b.mu.RLock()
-	values := b.events
+	// Copy into a fresh slice so callers receive an isolated snapshot. The
+	// internal buffer must not escape (callers would otherwise alias it) and
+	// must not be reordered, since concurrent publishers rely on the events
+	// staying in append order for compaction.
+	values := make([]Event, len(b.events))
+	copy(values, b.events)
 	b.mu.RUnlock()
 	sort.SliceStable(values, func(i, j int) bool {
 		return values[i].Time.After(values[j].Time)

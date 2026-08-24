@@ -93,14 +93,13 @@ func (b *eventBus) publish(event Event) {
 		copy(b.events, b.events[extra:])
 		b.events = b.events[:b.capacity]
 	}
-	listeners := append([]subscription(nil), b.listeners...)
-	b.mu.Unlock()
-	for _, item := range listeners {
+	for _, item := range b.listeners {
 		if item.typeFilter != nil && *item.typeFilter != event.Type {
 			continue
 		}
 		callListener(item.listener, event)
 	}
+	b.mu.Unlock()
 }
 
 func callListener(listener Listener, event Event) {

@@ -41,12 +41,12 @@ func (r *Registry) GetOrCreate(name string, opts ...Option) *Breaker {
 	}
 	breaker.Subscribe(r.events.publish)
 	r.breakers[name] = breaker
-	r.mu.Unlock()
 	r.events.publish(Event{
 		Type:     EventBreakerCreated,
 		Resource: name,
 		Data:     map[string]string{"name": name},
 	})
+	r.mu.Unlock()
 	return breaker
 }
 

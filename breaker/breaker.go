@@ -37,11 +37,6 @@ type Breaker struct {
 	events                              *eventBus
 }
 
-type callOutput struct {
-	value interface{}
-	err   error
-}
-
 func New(name string, opts ...Option) (*Breaker, error) {
 	settings := options{config: DefaultConfig()}
 	for _, option := range opts {
@@ -163,7 +158,7 @@ func (b *Breaker) invoke(ctx context.Context, fn func(context.Context) (interfac
 	}
 	callCtx, cancel := context.WithTimeout(ctx, b.Config().CallTimeout)
 	defer cancel()
-	output := make(chan callOutput, 1)
+	output := newCallOutputChannel()
 	go func() {
 		var result callOutput
 		defer func() {

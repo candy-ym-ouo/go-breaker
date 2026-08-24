@@ -2,6 +2,13 @@ package breaker
 
 import "time"
 
+type callOutput struct {
+	value interface{}
+	err   error
+}
+
+func newCallOutputChannel() chan callOutput { return make(chan callOutput) }
+
 // ResultType classifies one request handled by a breaker.
 type ResultType int32
 

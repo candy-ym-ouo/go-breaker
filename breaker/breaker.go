@@ -94,8 +94,14 @@ func (b *Breaker) ExecuteWithResult(ctx context.Context, fn func(context.Context
 		}
 	}
 	value, err, timedOut := b.invoke(ctx, fn)
+	// The permit is a lease: release exactly once for every outcome of the
+	// guarded call — success, business error, timeout, panic (recovered inside
+	// invoke), or context cancellation (surfaced as a timeout). Releasing only
+	// on success leaks the slot under MaxConcurrency=1 and starves later calls
+	// with ErrConcurrencyLimit. Probe calls skip the semaphore entirely, so
+	// there is nothing to release for them.
 	if semaphore != nil {
-		semaphore.Complete(err == nil && !timedOut)
+		semaphore.Release()
 	}
 	latency := time.Since(started).Milliseconds()
 	if timedOut {

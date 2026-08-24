@@ -171,7 +171,10 @@ func (s *Server) eventsHandler(writer http.ResponseWriter, request *http.Request
 	}
 	resource := request.URL.Query().Get("resource")
 	events := s.registry.RecentEvents(500)
-	filtered := events[:0]
+	// Build a fresh slice instead of reusing the returned snapshot's backing
+	// array; in-place compaction (events[:0]) would otherwise write through to
+	// shared memory and corrupt concurrent readers.
+	filtered := make([]breaker.Event, 0, len(events))
 	for _, event := range events {
 		if !since.IsZero() && !event.Time.After(since) {
 			continue

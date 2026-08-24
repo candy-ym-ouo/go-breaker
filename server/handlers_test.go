@@ -50,6 +50,43 @@ func TestBreakerAPIErrors(t *testing.T) {
 	}
 }
 
+func TestEventsFilterDoesNotCorruptBuffer(t *testing.T) {
+	registry := breaker.NewRegistry()
+	registry.GetOrCreate("a")
+	registry.GetOrCreate("b")
+	app := New(registry)
+
+	// Filter to resource=a first, then read without a filter. The unfiltered
+	// read must still contain the b creation event and only one a event.
+	filtered := request(t, app.Handler(), http.MethodGet, "/api/events?resource=a", nil)
+	if filtered.Code != http.StatusOK {
+		t.Fatalf("filtered status=%d body=%s", filtered.Code, filtered.Body.String())
+	}
+	var onlyA []EventView
+	if err := json.Unmarshal(filtered.Body.Bytes(), &onlyA); err != nil {
+		t.Fatalf("filtered decode: %v %s", err, filtered.Body.String())
+	}
+	if len(onlyA) != 1 || onlyA[0].Resource != "a" {
+		t.Fatalf("filtered expected single a event, got %+v", onlyA)
+	}
+
+	unfiltered := request(t, app.Handler(), http.MethodGet, "/api/events", nil)
+	if unfiltered.Code != http.StatusOK {
+		t.Fatalf("unfiltered status=%d body=%s", unfiltered.Code, unfiltered.Body.String())
+	}
+	var all []EventView
+	if err := json.Unmarshal(unfiltered.Body.Bytes(), &all); err != nil {
+		t.Fatalf("unfiltered decode: %v %s", err, unfiltered.Body.String())
+	}
+	counts := map[string]int{}
+	for _, view := range all {
+		counts[view.Resource]++
+	}
+	if counts["a"] != 1 || counts["b"] != 1 {
+		t.Fatalf("buffer corrupted by filtered read: counts=%v", counts)
+	}
+}
+
 func request(t *testing.T, handler http.Handler, method string, path string, body *bytes.Buffer) *httptest.ResponseRecorder {
 	t.Helper()
 	var request *http.Request

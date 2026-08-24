@@ -8,6 +8,111 @@ import (
 	"time"
 )
 
+func TestInvokeContextIsFreshPerCall(t *testing.T) {
+	instance := mustNew(t, "fresh-ctx", WithCallTimeout(time.Second))
+
+	// Each call must hand the callback a freshly derived, live context.
+	// With the prior caching bug, the second call reused the first call's
+	// already-canceled context and the callback returned ErrTimeout
+	// immediately.
+	var firstErr, secondErr error
+	if _, err := instance.Execute(context.Background(), func(ctx context.Context) (interface{}, error) {
+		firstErr = ctx.Err()
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if firstErr != nil {
+		t.Fatalf("first call callback got canceled context: %v", firstErr)
+	}
+	if _, err := instance.Execute(context.Background(), func(ctx context.Context) (interface{}, error) {
+		secondErr = ctx.Err()
+		return "ok", nil
+	}); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if secondErr != nil {
+		t.Fatalf("second call callback reused a canceled context: %v", secondErr)
+	}
+}
+
+func TestInvokeContextIndependentDeadlines(t *testing.T) {
+	// CallTimeout is generous; each call's deadline must be derived independently
+	// from its own parent rather than sharing the first call's deadline.
+	instance := mustNew(t, "independent-deadline", WithCallTimeout(time.Second))
+
+	_, firstDeadline, ok := runAndCaptureDeadline(t, instance, time.Now())
+	if !ok {
+		t.Fatal("first call had no deadline")
+	}
+	// A second call made later must have a strictly later deadline.
+	time.Sleep(20 * time.Millisecond)
+	_, secondDeadline, ok := runAndCaptureDeadline(t, instance, time.Now())
+	if !ok {
+		t.Fatal("second call had no deadline")
+	}
+	if !secondDeadline.After(firstDeadline) {
+		t.Fatalf("deadlines not independent: first=%s second=%s", firstDeadline, secondDeadline)
+	}
+}
+
+func runAndCaptureDeadline(t *testing.T, instance *Breaker, _ time.Time) (interface{}, time.Time, bool) {
+	t.Helper()
+	var deadline time.Time
+	var sawDeadline bool
+	value, err := instance.Execute(context.Background(), func(ctx context.Context) (interface{}, error) {
+		if d, ok := ctx.Deadline(); ok {
+			deadline = d
+			sawDeadline = true
+		}
+		return "ok", nil
+	})
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	return value, deadline, sawDeadline
+}
+
+func TestInvokeContextPropagatesParentCancellation(t *testing.T) {
+	instance := mustNew(t, "parent-cancel", WithCallTimeout(time.Second))
+
+	canceled := make(chan struct{})
+	_, err := instance.Execute(context.Background(), func(ctx context.Context) (interface{}, error) {
+		<-ctx.Done()
+		close(canceled)
+		return nil, ctx.Err()
+	})
+	if err == nil {
+		t.Fatal("expected error from canceled parent context")
+	}
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("parent cancellation did not propagate to the callback")
+	}
+}
+
+func TestInvokeContextPropagatesParentTimeout(t *testing.T) {
+	instance := mustNew(t, "parent-timeout", WithCallTimeout(10*time.Second))
+
+	parent, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
+	defer cancel()
+	canceled := make(chan struct{})
+	_, _, err := instance.ExecuteWithResult(parent, func(ctx context.Context) (interface{}, error) {
+		<-ctx.Done()
+		close(canceled)
+		return nil, ctx.Err()
+	})
+	if err == nil {
+		t.Fatal("expected error from parent timeout")
+	}
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("parent timeout did not propagate to the callback")
+	}
+}
+
 func TestBreakerOpensAndRecovers(t *testing.T) {
 	instance := mustNew(t, "test",
 		WithMinRequests(2),

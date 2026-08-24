@@ -1,19 +1,8 @@
 package breaker
 
 import (
-	"context"
 	"time"
 )
-
-type invocationContext struct {
-	context.Context
-	cancel context.CancelFunc
-}
-
-func newInvocationContext(parent context.Context, timeout time.Duration) *invocationContext {
-	ctx, cancel := context.WithTimeout(parent, timeout)
-	return &invocationContext{Context: ctx, cancel: cancel}
-}
 
 // ResultType classifies one request handled by a breaker.
 type ResultType int32

@@ -29,8 +29,6 @@ type Breaker struct {
 	probeTaken, probeSucceeded          int
 	probeFailed                         bool
 	probeEpoch                          atomic.Int64
-	invokeMu                            sync.Mutex
-	invokeContext                       *invocationContext
 	windowMu                            sync.RWMutex
 	window                              Window
 	semaphoreMu                         sync.RWMutex
@@ -163,13 +161,7 @@ func (b *Breaker) invoke(ctx context.Context, fn func(context.Context) (interfac
 	if fn == nil {
 		return nil, fmt.Errorf("nil call function"), false
 	}
-	b.invokeMu.Lock()
-	if b.invokeContext == nil {
-		b.invokeContext = newInvocationContext(ctx, b.Config().CallTimeout)
-	}
-	callCtx := b.invokeContext.Context
-	cancel := b.invokeContext.cancel
-	b.invokeMu.Unlock()
+	callCtx, cancel := context.WithTimeout(ctx, b.Config().CallTimeout)
 	defer cancel()
 	output := make(chan callOutput, 1)
 	go func() {

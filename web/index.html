@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>go-breaker 熔断监控台</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>go-breaker</h1>
+      <p>熔断降级监控台</p>
+    </div>
+    <div class="live"><span></span> 每 2 秒刷新</div>
+  </header>
+  <div id="notice" class="notice hidden"></div>
+  <section id="global" class="global cards"></section>
+  <main>
+    <aside>
+      <section class="panel">
+        <div class="panel-title"><h2>熔断器</h2><button id="refresh">刷新</button></div>
+        <div id="breaker-list" class="breaker-list"></div>
+      </section>
+      <section class="panel console">
+        <h2>故障注入</h2>
+        <label>资源<select id="sim-resource"></select></label>
+        <label>失败率 <strong id="rate-label">80%</strong><input id="sim-rate" type="range" min="0" max="100" value="80"></label>
+        <label>延迟（ms）<input id="sim-latency" type="number" min="0" value="100"></label>
+        <label>持续（秒）<input id="sim-seconds" type="number" min="1" value="15"></label>
+        <div class="actions"><button id="simulate" class="danger">注入故障</button><button id="stop-sim">停止</button></div>
+        <div id="sim-status" class="muted">当前无故障注入</div>
+      </section>
+    </aside>
+    <section id="detail" class="panel detail"><div class="empty">正在加载...</div></section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

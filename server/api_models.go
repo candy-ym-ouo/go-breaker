@@ -167,6 +167,8 @@ func eventView(event breaker.Event) EventView {
 			To:     change.To.String(),
 			Reason: change.Reason,
 		}
+	} else if change, ok := event.Data.(*breaker.ConfigChange); ok {
+		data = map[string]bool{"window_changed": change.WindowChanged}
 	}
 	return EventView{
 		Type:     event.Type.String(),

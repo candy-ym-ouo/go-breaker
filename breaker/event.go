@@ -43,6 +43,17 @@ type Event struct {
 	Data     interface{} `json:"data,omitempty"`
 }
 
+type ConfigChange struct {
+	WindowChanged bool `json:"window_changed"`
+}
+
+func configChange(previous, current Config) *ConfigChange {
+	if previous.WindowSize == current.WindowSize && previous.BucketDuration == current.BucketDuration {
+		return nil
+	}
+	return &ConfigChange{WindowChanged: true}
+}
+
 type Listener func(Event)
 
 type subscription struct {

@@ -369,7 +369,7 @@ func (b *Breaker) UpdateConfig(config Config) error {
 	b.events.publish(Event{
 		Type:     EventConfigChanged,
 		Resource: b.resource,
-		Data:     map[string]interface{}{"updated": true},
+		Data:     configChange(previous, config),
 	})
 	return nil
 }

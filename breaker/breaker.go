@@ -356,10 +356,21 @@ func (b *Breaker) UpdateConfig(config Config) error {
 	}
 	previous := b.Config()
 	if previous.WindowSize != config.WindowSize || previous.BucketDuration != config.BucketDuration {
+		// The window pointer is read under windowMu at every call site
+		// (recordRegular, maybeOpen, transitionChecked, Snapshot, Reset);
+		// replace it under the write lock so concurrent readers never see a
+		// half-published or racing pointer. This critical section is kept
+		// separate from semaphoreMu to avoid any lock nesting.
+		b.windowMu.Lock()
 		b.window = newSlidingWindow(config.WindowSize, config.BucketDuration, time.Now)
+		b.windowMu.Unlock()
 	}
 	if previous.MaxConcurrency != config.MaxConcurrency {
+		// Likewise, b.semaphore is read under semaphoreMu in
+		// currentSemaphore; swap it under the write lock.
+		b.semaphoreMu.Lock()
 		b.semaphore = NewSemaphore(config.MaxConcurrency)
+		b.semaphoreMu.Unlock()
 	}
 	b.config.Store(cloneConfig(config))
 	b.events.publish(Event{

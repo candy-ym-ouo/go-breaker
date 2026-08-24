@@ -101,7 +101,13 @@ func (s *Server) configHandler(writer http.ResponseWriter, request *http.Request
 		writeError(writer, http.StatusUnprocessableEntity, err)
 		return
 	}
-	go func() { _ = instance.UpdateConfig(config) }()
+	// Apply synchronously so the response snapshot reflects the published
+	// config rather than a stale pre-update copy. UpdateConfig holds only short
+	// mutex critical sections, never network/IO, so it is safe to run inline.
+	if err := instance.UpdateConfig(config); err != nil {
+		writeError(writer, http.StatusUnprocessableEntity, err)
+		return
+	}
 	writeJSON(writer, http.StatusOK, detail(instance.Snapshot()))
 }
 

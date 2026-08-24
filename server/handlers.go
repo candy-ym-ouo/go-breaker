@@ -97,10 +97,11 @@ func (s *Server) configHandler(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	config := applyConfigView(instance.Config(), view)
-	if err := instance.UpdateConfig(config); err != nil {
+	if err := config.Validate(); err != nil {
 		writeError(writer, http.StatusUnprocessableEntity, err)
 		return
 	}
+	go func() { _ = instance.UpdateConfig(config) }()
 	writeJSON(writer, http.StatusOK, detail(instance.Snapshot()))
 }
 

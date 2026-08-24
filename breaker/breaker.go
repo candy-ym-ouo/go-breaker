@@ -356,14 +356,10 @@ func (b *Breaker) UpdateConfig(config Config) error {
 	}
 	previous := b.Config()
 	if previous.WindowSize != config.WindowSize || previous.BucketDuration != config.BucketDuration {
-		b.windowMu.Lock()
 		b.window = newSlidingWindow(config.WindowSize, config.BucketDuration, time.Now)
-		b.windowMu.Unlock()
 	}
 	if previous.MaxConcurrency != config.MaxConcurrency {
-		b.semaphoreMu.Lock()
 		b.semaphore = NewSemaphore(config.MaxConcurrency)
-		b.semaphoreMu.Unlock()
 	}
 	b.config.Store(cloneConfig(config))
 	b.events.publish(Event{

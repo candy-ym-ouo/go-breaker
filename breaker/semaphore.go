@@ -54,10 +54,16 @@ func (s *Semaphore) Release() {
 	}
 }
 
+// Complete releases one acquired permit back to the semaphore.
+//
+// A permit is a lease: once Acquire succeeds it must be released exactly once,
+// regardless of whether the work it guarded succeeded, returned a business error,
+// timed out, panicked, or was cancelled by a context. Failing to release on any
+// outcome leaks the slot and, under MaxConcurrency=1, permanently starves all
+// later callers with ErrConcurrencyLimit. Release is idempotent, so an extra
+// release is a harmless no-op rather than a double-free.
 func (s *Semaphore) Complete(success bool) {
-	if success {
-		s.Release()
-	}
+	s.Release()
 }
 
 func (s *Semaphore) Count() int64 {

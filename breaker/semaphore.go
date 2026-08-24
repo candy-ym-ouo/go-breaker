@@ -54,6 +54,12 @@ func (s *Semaphore) Release() {
 	}
 }
 
+func (s *Semaphore) Complete(success bool) {
+	if success {
+		s.Release()
+	}
+}
+
 func (s *Semaphore) Count() int64 {
 	return s.count.Load()
 }

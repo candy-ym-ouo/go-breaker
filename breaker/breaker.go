@@ -85,15 +85,18 @@ func (b *Breaker) ExecuteWithResult(ctx context.Context, fn func(context.Context
 	if rejected != nil {
 		return b.reject(rejected, started)
 	}
+	var semaphore *Semaphore
 	if probe == 0 {
-		semaphore := b.currentSemaphore()
+		semaphore = b.currentSemaphore()
 		if !semaphore.Acquire(b.Config().AcquireTimeout) {
 			reason := ReasonConcurrencyLimit
 			return b.reject(&reason, started)
 		}
-		defer semaphore.Release()
 	}
 	value, err, timedOut := b.invoke(ctx, fn)
+	if semaphore != nil {
+		semaphore.Complete(err == nil && !timedOut)
+	}
 	latency := time.Since(started).Milliseconds()
 	if timedOut {
 		result := &Result{Type: ResultTimeout, Err: ErrTimeout, LatencyMs: latency, StartedAt: started}

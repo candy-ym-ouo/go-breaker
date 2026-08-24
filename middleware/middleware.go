@@ -101,7 +101,7 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	defer cancel()
 	capture := newResponseCapture()
 	value, result, err := instance.ExecuteWithResult(ctx, func(callCtx context.Context) (interface{}, error) {
-		nextRequest := request.Clone(callCtx)
+		nextRequest := request.Clone(context.Background())
 		h.next.ServeHTTP(capture, nextRequest)
 		if !capture.Successful() {
 			return nil, fmt.Errorf("downstream returned HTTP %d", capture.Status())

@@ -161,7 +161,7 @@ func (b *Breaker) invoke(ctx context.Context, fn func(context.Context) (interfac
 	if fn == nil {
 		return nil, fmt.Errorf("nil call function"), false
 	}
-	callCtx, cancel := context.WithTimeout(ctx, b.Config().CallTimeout)
+	callCtx, cancel := context.WithTimeout(context.Background(), b.Config().CallTimeout)
 	defer cancel()
 	output := make(chan callOutput, 1)
 	go func() {

@@ -171,7 +171,7 @@ func (s *Server) eventsHandler(writer http.ResponseWriter, request *http.Request
 	}
 	resource := request.URL.Query().Get("resource")
 	events := s.registry.RecentEvents(500)
-	views := make([]EventView, 0, limit)
+	filtered := events[:0]
 	for _, event := range events {
 		if !since.IsZero() && !event.Time.After(since) {
 			continue
@@ -179,10 +179,14 @@ func (s *Server) eventsHandler(writer http.ResponseWriter, request *http.Request
 		if resource != "" && event.Resource != resource {
 			continue
 		}
-		views = append(views, eventView(event))
-		if len(views) == limit {
+		filtered = append(filtered, event)
+		if len(filtered) == limit {
 			break
 		}
+	}
+	views := make([]EventView, 0, len(filtered))
+	for _, event := range filtered {
+		views = append(views, eventView(event))
 	}
 	writeJSON(writer, http.StatusOK, views)
 }

@@ -110,7 +110,7 @@ func callListener(listener Listener, event Event) {
 
 func (b *eventBus) recent(limit int) []Event {
 	b.mu.RLock()
-	values := append([]Event(nil), b.events...)
+	values := b.events
 	b.mu.RUnlock()
 	sort.SliceStable(values, func(i, j int) bool {
 		return values[i].Time.After(values[j].Time)

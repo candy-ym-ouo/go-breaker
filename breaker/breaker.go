@@ -313,8 +313,11 @@ func (b *Breaker) transitionChecked(expected State, epoch int64, target State, r
 
 func (b *Breaker) degrade(reason Reason, result *Result) (interface{}, error) {
 	value, err := b.Config().Fallback.Execute(reason, result)
-	if err != nil && !isKnownExecutionError(err) {
-		return nil, fmt.Errorf("%w: %v", ErrFallbackFailed, err)
+	if err != nil {
+		if !isKnownExecutionError(err) {
+			return nil, fmt.Errorf("%w: %v", ErrFallbackFailed, err)
+		}
+		return nil, fmt.Errorf("degraded execution: %v", err)
 	}
 	return value, err
 }

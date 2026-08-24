@@ -62,6 +62,6 @@ func (f Fallback) Execute(reason Reason, result *Result) (value interface{}, err
 	case FallbackReturnErr:
 		fallthrough
 	default:
-		return nil, original
+		return nil, fmt.Errorf("fallback execution: %w", original)
 	}
 }

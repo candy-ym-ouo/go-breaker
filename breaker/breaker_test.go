@@ -3,6 +3,7 @@ package breaker
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -55,6 +56,45 @@ func TestBreakerFallbackTimeoutAndPanic(t *testing.T) {
 	metrics := instance.Snapshot().Metrics
 	if metrics.Timeouts != 1 || metrics.Failed != 1 {
 		t.Fatalf("metrics: %+v", metrics)
+	}
+}
+
+func TestBreakerTimeoutDoesNotLeakLateGoroutine(t *testing.T) {
+	// CallTimeout (1ms) shorter than the business call (3ms). Fire 200 calls
+	// concurrently: they all time out and the caller returns, but each late
+	// goroutine keeps running fn and must still be able to deliver its result
+	// and exit. With an unbuffered result channel that send blocks forever
+	// (no receiver is ever coming), leaking one goroutine per timed-out call.
+	// MaxConcurrency is lifted so every call reaches the timeout path. We
+	// only assert the leak here; timeout accounting is covered by
+	// TestBreakerFallbackTimeoutAndPanic.
+	const n = 200
+	instance := mustNew(t, "timeout-leak",
+		WithCallTimeout(time.Millisecond),
+		WithMaxConcurrency(n+1),
+	)
+	before := runtime.NumGoroutine()
+	var group sync.WaitGroup
+	group.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer group.Done()
+			_, _, _ = instance.ExecuteWithResult(context.Background(), func(context.Context) (interface{}, error) {
+				time.Sleep(3 * time.Millisecond)
+				return "late", nil
+			})
+		}()
+	}
+	group.Wait()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() <= before+1 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if delta := runtime.NumGoroutine() - before; delta > 5 {
+		t.Fatalf("timeout leaked goroutines: before=%d after=%d delta=%d", before, runtime.NumGoroutine(), delta)
 	}
 }
 

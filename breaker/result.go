@@ -7,7 +7,14 @@ type callOutput struct {
 	err   error
 }
 
-func newCallOutputChannel() chan callOutput { return make(chan callOutput) }
+// newCallOutputChannel returns the channel used to hand a business call's
+// result back to ExecuteWithResult. It carries one buffered slot so that a
+// goroutine whose call finishes after the caller has already timed out can
+// complete its send and exit instead of blocking forever on an unbuffered
+// channel with no receiver. The buffer is never closed: the late result is
+// simply discarded, preserving the timeout/panic/normal-return semantics
+// while avoiding "send on closed channel".
+func newCallOutputChannel() chan callOutput { return make(chan callOutput, 1) }
 
 // ResultType classifies one request handled by a breaker.
 type ResultType int32

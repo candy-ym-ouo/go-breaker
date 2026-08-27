@@ -43,8 +43,10 @@ make package
 - **半开探测**：熔断冷却期结束后放行少量探测请求，按连续成功次数决定恢复或再次熔断。
 - **并发隔离**：基于信号量的最大并发控制，超限请求快速失败，防止故障在调用链上放大。
 - **多级降级策略**：熔断降级、并发超限降级、超时降级、失败降级，支持 Fallback 回调与默认值降级。
+- **安全重试策略**：支持调用方定义可重试错误，按指数退避进行有限重试，且只记录最终结果。
 - **熔断器注册中心**：按资源名（如 `getUser`、`payOrder`）注册与管理多个熔断器实例。
 - **动态配置**：运行期调整阈值、冷却时间、窗口大小等参数，无需重启。
+- **批量运维控制**：可对注册中心内全部熔断器下发部分配置，或一键清空运行指标。
 - **事件与指标**：状态变更事件、请求结果事件、周期指标快照，可挂载自定义监听器。
 - **HTTP 中间件**：一行接入标准库 `net/http` 服务。
 - **监控/管理 API**：REST 风格接口，输出熔断器状态与指标（JSON）。
@@ -115,6 +117,10 @@ open http://localhost:8080
 # 3. 查看熔断器列表与指标
 curl http://localhost:8080/api/breakers
 curl http://localhost:8080/api/metrics
+
+# 对全部熔断器下发部分配置，或清空全部运行指标
+curl -X PUT http://localhost:8080/api/breakers/config -d '{"max_concurrency":64}'
+curl -X POST http://localhost:8080/api/breakers/reset
 
 # 4. 向模拟服务持续注入失败，观察熔断器从 Closed → Open → Half-Open
 curl "http://localhost:8080/api/demo/simulate?name=payOrder&failRate=80&seconds=15"

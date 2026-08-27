@@ -19,6 +19,10 @@ type ConfigView struct {
 	CallTimeoutMs     *int64   `json:"call_timeout_ms,omitempty"`
 	EnableResultEvent *bool    `json:"enable_result_event,omitempty"`
 	MetricSnapshotSec *int     `json:"metric_snapshot_sec,omitempty"`
+	RetryMaxAttempts  *int     `json:"retry_max_attempts,omitempty"`
+	RetryInitialMs    *int64   `json:"retry_initial_delay_ms,omitempty"`
+	RetryMaxDelayMs   *int64   `json:"retry_max_delay_ms,omitempty"`
+	RetryMultiplier   *float64 `json:"retry_multiplier,omitempty"`
 }
 
 type ConfigResponse struct {
@@ -34,6 +38,10 @@ type ConfigResponse struct {
 	CallTimeoutMs     int64   `json:"call_timeout_ms"`
 	EnableResultEvent bool    `json:"enable_result_event"`
 	MetricSnapshotSec int     `json:"metric_snapshot_sec"`
+	RetryMaxAttempts  int     `json:"retry_max_attempts"`
+	RetryInitialMs    int64   `json:"retry_initial_delay_ms"`
+	RetryMaxDelayMs   int64   `json:"retry_max_delay_ms"`
+	RetryMultiplier   float64 `json:"retry_multiplier"`
 }
 
 type BreakerSummary struct {
@@ -67,7 +75,24 @@ type GlobalMetrics struct {
 	Timeouts  int64   `json:"timeouts"`
 	Rejected  int64   `json:"rejected"`
 	InFlight  int64   `json:"in_flight"`
+	Retries   int64   `json:"retries"`
 	ErrorRate float64 `json:"error_rate"`
+}
+
+// HealthResponse describes the current availability of the breaker registry.
+// Open breakers are reported explicitly so callers can distinguish a healthy
+// management service from one protecting unavailable upstream dependencies.
+type HealthResponse struct {
+	Status   string `json:"status"`
+	Breakers int    `json:"breakers"`
+	Closed   int    `json:"closed"`
+	Open     int    `json:"open"`
+	HalfOpen int    `json:"half_open"`
+	InFlight int64  `json:"in_flight"`
+}
+
+type BatchResult struct {
+	Updated int `json:"updated"`
 }
 
 type EventView struct {
@@ -97,6 +122,10 @@ func configResponse(config breaker.Config) ConfigResponse {
 		CallTimeoutMs:     config.CallTimeout.Milliseconds(),
 		EnableResultEvent: config.EnableResultEvent,
 		MetricSnapshotSec: config.MetricSnapshotSec,
+		RetryMaxAttempts:  config.Retry.MaxAttempts,
+		RetryInitialMs:    config.Retry.InitialDelay.Milliseconds(),
+		RetryMaxDelayMs:   config.Retry.MaxDelay.Milliseconds(),
+		RetryMultiplier:   config.Retry.Multiplier,
 	}
 }
 
@@ -113,6 +142,10 @@ func applyConfigView(config breaker.Config, view ConfigView) breaker.Config {
 	setDuration(&config.CallTimeout, view.CallTimeoutMs)
 	setValue(&config.EnableResultEvent, view.EnableResultEvent)
 	setValue(&config.MetricSnapshotSec, view.MetricSnapshotSec)
+	setValue(&config.Retry.MaxAttempts, view.RetryMaxAttempts)
+	setDuration(&config.Retry.InitialDelay, view.RetryInitialMs)
+	setDuration(&config.Retry.MaxDelay, view.RetryMaxDelayMs)
+	setValue(&config.Retry.Multiplier, view.RetryMultiplier)
 	return config
 }
 

@@ -11,6 +11,7 @@ type Config struct {
 	ErrorThreshold                                                              float64
 	MinRequests                                                                 int64
 	Fallback                                                                    Fallback
+	Retry                                                                       RetryPolicy
 	EnableResultEvent                                                           bool
 }
 
@@ -27,6 +28,7 @@ func DefaultConfig() Config {
 		AcquireTimeout:    0,
 		CallTimeout:       3 * time.Second,
 		Fallback:          Fallback{Type: FallbackReturnErr},
+		Retry:             DefaultRetryPolicy(),
 		EnableResultEvent: false,
 		MetricSnapshotSec: 5,
 	}
@@ -53,6 +55,9 @@ func (c Config) Validate() error {
 	}
 	if c.Fallback.Type == FallbackCustomFunc && c.Fallback.Func == nil {
 		return fmt.Errorf("%w: custom fallback requires a function", ErrConfigInvalid)
+	}
+	if err := c.Retry.Validate(); err != nil {
+		return err
 	}
 	return nil
 }

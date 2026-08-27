@@ -86,6 +86,7 @@ type Config struct {
     AcquireTimeout    time.Duration // 信号量获取超时，默认 0（不等待）
     CallTimeout       time.Duration // 调用超时，默认 3s
     Fallback          Fallback      // 降级策略（默认 ReturnErr）
+    Retry             RetryPolicy   // 重试策略（默认不重试）
     EnableResultEvent bool          // 是否发布单请求事件，默认 false
     MetricSnapshotSec int           // 周期指标快照间隔，默认 5
 }
@@ -93,6 +94,25 @@ type Config struct {
 func DefaultConfig() Config
 func (c Config) Validate() error    // 阈值 ∈ [0,1]、窗口 ≥ 1、并发 ≥ 1 等
 ```
+
+### 2.3.1 重试策略
+
+```go
+type RetryPredicate func(error) bool
+
+type RetryPolicy struct {
+    MaxAttempts  int           // 总尝试次数，含首次调用；默认 1
+    InitialDelay time.Duration // 首次重试等待时间
+    MaxDelay     time.Duration // 退避等待上限，0 表示不设上限
+    Multiplier   float64       // 退避倍数，最小 1
+    Retryable    RetryPredicate // 必须由调用方判断错误是否可安全重试
+}
+
+func DefaultRetryPolicy() RetryPolicy
+func WithRetryPolicy(policy RetryPolicy) Option
+```
+
+重试仅适用于幂等或已实现去重的业务操作；每次 `Execute` 无论内部尝试多少次，滑动窗口只记录最终结果。
 
 ### 2.4 构造选项（Option 模式）
 
@@ -297,7 +317,7 @@ func WithStateHeader(enable bool) Option           // 输出 X-Breaker-State 响
 | GET | `/api/breakers/{name}` | 单实例详情（窗口桶明细 + 指标 + 配置） | `BreakerDetail` |
 | GET | `/api/metrics` | 全局聚合指标 | `GlobalMetrics` |
 | GET | `/api/events?since={ts}&limit={n}` | 事件列表（时间倒序） | `EventView[]` |
-| GET | `/api/health` | 存活探针 | `{"status":"ok"}` |
+| GET | `/api/health` | 存活探针与熔断器状态汇总 | `HealthResponse` |
 
 ### 4.2 管理接口
 
@@ -305,6 +325,8 @@ func WithStateHeader(enable bool) Option           // 输出 X-Breaker-State 响
 | --- | --- | --- | --- |
 | PUT | `/api/breakers/{name}/config` | 动态更新配置 | `ConfigView`（部分字段可缺省） |
 | POST | `/api/breakers/{name}/reset` | 重置窗口与指标 | — |
+| PUT | `/api/breakers/config` | 对全部实例下发部分配置；每个实例未指定字段保持原值 | `ConfigView` |
+| POST | `/api/breakers/reset` | 重置全部实例的窗口与累计指标，不改变状态 | — |
 | POST | `/api/breakers/{name}/state` | 手动切换状态 | `{"state":"closed\|open\|half_open"}` |
 | POST | `/api/breakers/{name}/probe` | 手动触发探测 | — |
 

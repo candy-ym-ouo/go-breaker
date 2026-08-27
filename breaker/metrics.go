@@ -8,9 +8,9 @@ const (
 )
 
 type metrics struct {
-	totalRequests, succeeded, failed, timeouts, rejectedB, rejectedC atomic.Int64
-	probeSuccess, probeFailed, latencyTotalMs, latencyCount          atomic.Int64
-	latency                                                          [latencyBucketCount]atomic.Int64
+	totalRequests, succeeded, failed, timeouts, rejectedB, rejectedC, retries atomic.Int64
+	probeSuccess, probeFailed, latencyTotalMs, latencyCount                   atomic.Int64
+	latency                                                                   [latencyBucketCount]atomic.Int64
 }
 
 type MetricsSnapshot struct {
@@ -20,6 +20,7 @@ type MetricsSnapshot struct {
 	Timeouts              int64   `json:"timeouts"`
 	RejectedByBreaker     int64   `json:"rejected_by_breaker"`
 	RejectedByConcurrency int64   `json:"rejected_by_concurrency"`
+	Retries               int64   `json:"retries"`
 	ProbeSuccess          int64   `json:"probe_success"`
 	ProbeFailed           int64   `json:"probe_failed"`
 	InFlight              int64   `json:"in_flight"`
@@ -30,6 +31,8 @@ type MetricsSnapshot struct {
 func (m *metrics) begin() {
 	m.totalRequests.Add(1)
 }
+
+func (m *metrics) retry() { m.retries.Add(1) }
 
 func (m *metrics) record(result ResultType, latencyMs int64) {
 	switch result {
@@ -79,6 +82,7 @@ func (m *metrics) snapshot(inFlight int64) MetricsSnapshot {
 		Timeouts:              m.timeouts.Load(),
 		RejectedByBreaker:     m.rejectedB.Load(),
 		RejectedByConcurrency: m.rejectedC.Load(),
+		Retries:               m.retries.Load(),
 		ProbeSuccess:          m.probeSuccess.Load(),
 		ProbeFailed:           m.probeFailed.Load(),
 		InFlight:              inFlight,
@@ -113,6 +117,7 @@ func (m *metrics) reset() {
 	m.timeouts.Store(0)
 	m.rejectedB.Store(0)
 	m.rejectedC.Store(0)
+	m.retries.Store(0)
 	m.probeSuccess.Store(0)
 	m.probeFailed.Store(0)
 	m.latencyTotalMs.Store(0)

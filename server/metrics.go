@@ -14,6 +14,7 @@ func aggregateMetrics(registry *breaker.Registry) GlobalMetrics {
 		result.Rejected += snapshot.Metrics.RejectedByBreaker
 		result.Rejected += snapshot.Metrics.RejectedByConcurrency
 		result.InFlight += snapshot.Metrics.InFlight
+		result.Retries += snapshot.Metrics.Retries
 	}
 	completed := result.Succeeded + result.Failed + result.Timeouts
 	if completed > 0 {

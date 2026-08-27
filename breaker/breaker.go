@@ -158,6 +158,27 @@ func (b *Breaker) reject(reason *Reason, started time.Time) (interface{}, *Resul
 }
 
 func (b *Breaker) invoke(ctx context.Context, fn func(context.Context) (interface{}, error)) (interface{}, error, bool) {
+	policy := b.Config().Retry
+	for attempt := 1; ; attempt++ {
+		value, err, timedOut := b.invokeOnce(ctx, fn)
+		if err == nil || attempt >= policy.attempts() {
+			return value, err, timedOut
+		}
+		retryErr := err
+		if timedOut {
+			retryErr = ErrTimeout
+		}
+		if policy.Retryable == nil || !policy.Retryable(retryErr) {
+			return value, err, timedOut
+		}
+		if err := policy.wait(ctx, attempt); err != nil {
+			return nil, err, errors.Is(err, context.DeadlineExceeded)
+		}
+		b.metrics.retry()
+	}
+}
+
+func (b *Breaker) invokeOnce(ctx context.Context, fn func(context.Context) (interface{}, error)) (interface{}, error, bool) {
 	if fn == nil {
 		return nil, fmt.Errorf("nil call function"), false
 	}

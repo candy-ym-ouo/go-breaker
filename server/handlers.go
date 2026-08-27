@@ -17,6 +17,8 @@ func (s *Server) registerAPI() {
 	s.mux.HandleFunc("/api/metrics", s.metricsHandler)
 	s.mux.HandleFunc("/api/events", s.eventsHandler)
 	s.mux.HandleFunc("/api/breakers", s.breakersHandler)
+	s.mux.HandleFunc("/api/breakers/config", s.allConfigHandler)
+	s.mux.HandleFunc("/api/breakers/reset", s.resetAllHandler)
 	s.mux.HandleFunc("/api/breakers/", s.breakerHandler)
 }
 
@@ -25,7 +27,21 @@ func (s *Server) healthHandler(writer http.ResponseWriter, request *http.Request
 		methodNotAllowed(writer, http.MethodGet)
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
+	health := HealthResponse{Status: "ok"}
+	for _, instance := range s.registry.List() {
+		snapshot := instance.Snapshot()
+		health.Breakers++
+		health.InFlight += snapshot.Metrics.InFlight
+		switch snapshot.State {
+		case breaker.StateClosed:
+			health.Closed++
+		case breaker.StateOpen:
+			health.Open++
+		case breaker.StateHalfOpen:
+			health.HalfOpen++
+		}
+	}
+	writeJSON(writer, http.StatusOK, health)
 }
 
 func (s *Server) metricsHandler(writer http.ResponseWriter, request *http.Request) {
@@ -47,6 +63,47 @@ func (s *Server) breakersHandler(writer http.ResponseWriter, request *http.Reque
 	default:
 		methodNotAllowed(writer, http.MethodGet)
 	}
+}
+
+// allConfigHandler applies the supplied fields to every existing breaker.
+// Each instance starts from its own configuration, preserving local values for
+// fields absent from the request.
+func (s *Server) allConfigHandler(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPut {
+		methodNotAllowed(writer, http.MethodPut)
+		return
+	}
+	var view ConfigView
+	if err := decodeJSON(request, &view); err != nil {
+		writeError(writer, http.StatusBadRequest, err)
+		return
+	}
+	instances := s.registry.List()
+	configs := make([]breaker.Config, len(instances))
+	for index, instance := range instances {
+		configs[index] = applyConfigView(instance.Config(), view)
+		if err := configs[index].Validate(); err != nil {
+			writeError(writer, http.StatusUnprocessableEntity, err)
+			return
+		}
+	}
+	for index, instance := range instances {
+		if err := instance.UpdateConfig(configs[index]); err != nil {
+			writeError(writer, http.StatusUnprocessableEntity, err)
+			return
+		}
+	}
+	writeJSON(writer, http.StatusOK, BatchResult{Updated: len(instances)})
+}
+
+func (s *Server) resetAllHandler(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		methodNotAllowed(writer, http.MethodPost)
+		return
+	}
+	instances := s.registry.List()
+	s.registry.ResetAll()
+	writeJSON(writer, http.StatusOK, BatchResult{Updated: len(instances)})
 }
 
 func (s *Server) breakerHandler(writer http.ResponseWriter, request *http.Request) {

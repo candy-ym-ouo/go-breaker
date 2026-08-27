@@ -49,6 +49,8 @@ func WithFallbackValue(value interface{}) Option {
 	}
 }
 
+func WithRetryPolicy(policy RetryPolicy) Option { return func(o *options) { o.config.Retry = policy } }
+
 func WithEventListener(fn func(Event)) Option {
 	return func(o *options) { o.listeners = append(o.listeners, Listener(fn)) }
 }

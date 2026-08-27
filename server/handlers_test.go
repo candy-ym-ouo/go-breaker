@@ -50,6 +50,69 @@ func TestBreakerAPIErrors(t *testing.T) {
 	}
 }
 
+func TestBatchManagementAPI(t *testing.T) {
+	registry := breaker.NewRegistry()
+	first := registry.GetOrCreate("first")
+	second := registry.GetOrCreate("second")
+	secondConfig := second.Config()
+	secondConfig.MinRequests = 9
+	if err := second.UpdateConfig(secondConfig); err != nil {
+		t.Fatal(err)
+	}
+	first.ForceState(breaker.StateOpen)
+	app := New(registry)
+
+	response := request(t, app.Handler(), http.MethodPut, "/api/breakers/config", bytes.NewBufferString(`{"max_concurrency":3}`))
+	if response.Code != http.StatusOK {
+		t.Fatalf("batch config status=%d body=%s", response.Code, response.Body.String())
+	}
+	if first.Config().MaxConcurrency != 3 || second.Config().MaxConcurrency != 3 || second.Config().MinRequests != 9 {
+		t.Fatal("batch configuration was not applied to every breaker")
+	}
+
+	response = request(t, app.Handler(), http.MethodPost, "/api/breakers/reset", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("batch reset status=%d body=%s", response.Code, response.Body.String())
+	}
+	if first.State() != breaker.StateOpen {
+		t.Fatal("reset should clear metrics without changing breaker state")
+	}
+}
+
+func TestHealthAPIReportsBreakerStates(t *testing.T) {
+	registry := breaker.NewRegistry()
+	registry.GetOrCreate("closed")
+	registry.GetOrCreate("open").ForceState(breaker.StateOpen)
+	registry.GetOrCreate("half-open").ForceState(breaker.StateOpen)
+	registry.GetOrCreate("half-open").TriggerProbe()
+	app := New(registry)
+
+	response := request(t, app.Handler(), http.MethodGet, "/api/health", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("health status=%d", response.Code)
+	}
+	var health HealthResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &health); err != nil {
+		t.Fatal(err)
+	}
+	if health.Status != "ok" || health.Breakers != 3 || health.Closed != 1 || health.Open != 1 || health.HalfOpen != 1 {
+		t.Fatalf("unexpected health response: %+v", health)
+	}
+}
+
+func TestConfigAPIRetryFields(t *testing.T) {
+	registry := breaker.NewRegistry()
+	instance := registry.GetOrCreate("retry")
+	app := New(registry)
+	response := request(t, app.Handler(), http.MethodPut, "/api/breakers/retry/config", bytes.NewBufferString(`{"retry_max_attempts":2,"retry_initial_delay_ms":5,"retry_multiplier":2}`))
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("missing retry predicate should be rejected: status=%d body=%s", response.Code, response.Body.String())
+	}
+	if instance.Config().Retry.MaxAttempts != 1 {
+		t.Fatal("invalid retry configuration was applied")
+	}
+}
+
 func request(t *testing.T, handler http.Handler, method string, path string, body *bytes.Buffer) *httptest.ResponseRecorder {
 	t.Helper()
 	var request *http.Request
